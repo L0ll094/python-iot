@@ -1,0 +1,1 @@
+Making a fake IoT Device to practice AWS IoT tools
