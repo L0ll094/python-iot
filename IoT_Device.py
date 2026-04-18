@@ -3,6 +3,7 @@ from typing import Optional, Callable, Any
 from dataclasses import dataclass
 import time  # Replace asyncio with time
 import paho.mqtt.client as mqtt
+from paho.mqtt.enums import CallbackAPIVersion
 import json
 import ssl
 from datetime import datetime, timezone
@@ -61,15 +62,15 @@ class IoTDevice(ABC):
         self,
         device_id: str,
         mqtt_config: MQTTConfig,
-        serial_number: float,
+        serial_number: float = 111,
         on_connect: Optional[Callable] = None,
         on_disconnect: Optional[Callable] = None
         
     ):
         self.device_id = device_id
         self.mqtt_config = mqtt_config
-        self.serial_number = 111
-        self.client = mqtt.Client(client_id=device_id)
+        self.serial_number = serial_number
+        self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=device_id)
         self.is_connected = False
         
         # Set callbacks
@@ -89,7 +90,8 @@ class IoTDevice(ABC):
     def _on_disconnect(self, client: mqtt.Client, userdata: Any, disconnect_flags: Any, reason_code: Any, properties: Any) -> None:
         """Internal callback when MQTT disconnects"""
         self.is_connected = False
-        print(f"[{self.device_id}] Disconnected from MQTT broker")
+        print(f"[{self.device_id}] Disconnected from MQTT broker (reason: {reason_code})")
+
         if self.on_disconnect_callback:
             self.on_disconnect_callback(self)
     
@@ -110,13 +112,7 @@ class IoTDevice(ABC):
             )
             # Use secure MQTT port if not specified
             port = self.mqtt_config.broker_port if self.mqtt_config.broker_port != 1883 else 8883
-        else:
-            # Use username/password if no certificates
-            if self.mqtt_config.username and self.mqtt_config.password:
-                self.client.username_pw_set(
-                    self.mqtt_config.username,
-                    self.mqtt_config.password
-                )
+
             port = self.mqtt_config.broker_port
         
 
@@ -127,7 +123,17 @@ class IoTDevice(ABC):
                 self.mqtt_config.broker_port,
                 keepalive=60
             )
-            print(f"[{self.device_id}] Successfully connected to MQTT broker")
+            self.client.loop_start()
+            # Wait for CONNACK before returning
+            timeout = time.time() + 5
+            while not self.is_connected and time.time() < timeout:
+                time.sleep(0.05)
+           
+            if self.is_connected:
+                print(f"[{self.device_id}] Successfully connected to MQTT broker")
+            else:
+                print(f"[{self.device_id}] Error: Timed out waiting for connection")
+
             
         except Exception as e:
             print(f"[{self.device_id}] Error: Failed to connect to MQTT broker at {self.mqtt_config.broker_address}:{self.mqtt_config.broker_port}")
@@ -137,6 +143,7 @@ class IoTDevice(ABC):
     
     def disconnect(self) -> None:
         """Disconnect from MQTT broker"""
+        self.client.loop_stop()
         self.client.disconnect()
     
     def publish(self, message: DeviceMessage, qos: int = 1) -> None:
@@ -166,6 +173,7 @@ class IoTDevice(ABC):
     @abstractmethod
     def on_message(self, topic: str, payload: str) -> None:
         """Handle incoming messages from subscribed topics"""
+        print(f"[{self.device_id}] Received message on {topic}: {payload}")
         pass
 
 
@@ -183,6 +191,7 @@ class TemperatureSensor(IoTDevice):
     def run(self) -> None:
         """Simulate temperature readings and publish them"""
         self.connect()
+        self.subscribe(f"devices/{self.serial_number}/temperature")  # Subscribe to command topic
         
         try:
             for i in range(10):
@@ -192,7 +201,7 @@ class TemperatureSensor(IoTDevice):
                 # Create and publish message
                 message = DeviceMessage(
                     device_id=self.device_id,
-                    topic=f"devices/{self.device_id}/temperature",
+                    topic=f"devices/{self.serial_number}/temperature",
                     payload={"temp_celsius": round(self.temperature, 2), "unit": "C"}
                 )
                 
@@ -200,7 +209,7 @@ class TemperatureSensor(IoTDevice):
                 print(f"[{self.device_id}] Published: {self.temperature:.2f}°C")
                 
                 # Wait before next reading
-                time.sleep(2)
+                time.sleep(10)
         
         finally:
             self.disconnect()
@@ -227,8 +236,10 @@ def main():
     )
     
     # Create and run a single temperature sensor
-    sensor = TemperatureSensor("sensor_001", mqtt_config)
+    sensor = TemperatureSensor("FakeTempSensor", mqtt_config) #This device ID needs to be the same thing as the thing name in the cloud
     sensor.run()
+
+
 
 
 if __name__ == "__main__":
