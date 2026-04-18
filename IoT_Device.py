@@ -119,26 +119,19 @@ class IoTDevice(ABC):
                 )
             port = self.mqtt_config.broker_port
         
-        self.client.connect(
 
-
-            self.mqtt_config.broker_address,
-            port,
-            keepalive=60
-        )
-        def connect(self) -> None:
-            "Abstraction of connect-to-MQTT-method to include error handling"
-            try: 
-                self.client.connect(
-                    self.mqtt_config.broker_address,
-                    self.mqtt_config.broker_port,
-                    keepalive=60
-                )
-                print(f"[{self.device_id}] Successfully connected to MQTT broker")
-                
-            except Exception as e:
-                print(f"[{self.device_id}] Error: Failed to connect to MQTT broker at {self.mqtt_config.broker_address}:{self.mqtt_config.broker_port}")
-                self.is_connected = False
+        "Abstraction of connect-to-MQTT-method to include error handling"
+        try: 
+            self.client.connect(
+                self.mqtt_config.broker_address,
+                self.mqtt_config.broker_port,
+                keepalive=60
+            )
+            print(f"[{self.device_id}] Successfully connected to MQTT broker")
+            
+        except Exception as e:
+            print(f"[{self.device_id}] Error: Failed to connect to MQTT broker at {self.mqtt_config.broker_address}:{self.mqtt_config.broker_port}")
+            self.is_connected = False
 
                 
     
@@ -224,12 +217,13 @@ class TemperatureSensor(IoTDevice):
 def main():
     """Example of running a single device"""
     
-    # Configure MQTT broker
+    # Configure MQTT broker with X.509 certificates
     mqtt_config = MQTTConfig(
-        broker_address="localhost",
-        broker_port=1883,
-        username="your_username",
-        password="your_password"
+        broker_address="a1ax2c7i1tgioq-ats.iot.eu-north-1.amazonaws.com", 
+        broker_port=8883,  # Secure port for certificates
+        ca_cert_path="cert/0639a98033ec9fe3da771503029802a67fa5a5ddac16ed6670898810dd8f3087-certificate.pem.crt",        # AWS root CA certificate
+        client_cert_path="cert/50104f8772ab8ac1b4173fddf543fc32b015fc38ea6dffed344c1ba857443b00-public.pem.key",      # Your device certificate
+        private_key_path="cert/50104f8772ab8ac1b4173fddf543fc32b015fc38ea6dffed344c1ba857443b00-private.pem.key"            # Your device private key
     )
     
     # Create and run a single temperature sensor
