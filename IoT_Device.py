@@ -220,10 +220,10 @@ def main():
     # Configure MQTT broker with X.509 certificates
     mqtt_config = MQTTConfig(
         broker_address="a1ax2c7i1tgioq-ats.iot.eu-north-1.amazonaws.com", 
-        broker_port=8883,  # Secure port for certificates
-        ca_cert_path="cert/0639a98033ec9fe3da771503029802a67fa5a5ddac16ed6670898810dd8f3087-certificate.pem.crt",        # AWS root CA certificate
-        client_cert_path="cert/50104f8772ab8ac1b4173fddf543fc32b015fc38ea6dffed344c1ba857443b00-public.pem.key",      # Your device certificate
-        private_key_path="cert/50104f8772ab8ac1b4173fddf543fc32b015fc38ea6dffed344c1ba857443b00-private.pem.key"            # Your device private key
+        broker_port=8883,
+        ca_cert_path="C:/Users/louis/Documents/Code Repos/python_iot/cert/AmazonRootCA1.pem",
+        client_cert_path="C:/Users/louis/Documents/Code Repos/python_iot/cert/0639a98033ec9fe3da771503029802a67fa5a5ddac16ed6670898810dd8f3087-certificate.pem.crt",
+        private_key_path="C:/Users/louis/Documents/Code Repos/python_iot/cert/50104f8772ab8ac1b4173fddf543fc32b015fc38ea6dffed344c1ba857443b00-private.pem.key"
     )
     
     # Create and run a single temperature sensor
