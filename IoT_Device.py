@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Optional, Callable, Any
 from dataclasses import dataclass
-import time  # Replace asyncio with time
+import time 
 import paho.mqtt.client as mqtt
 from paho.mqtt.enums import CallbackAPIVersion
 import json
@@ -60,7 +60,7 @@ class IoTDevice(ABC):
     
     def __init__(
         self,
-        device_id: str,
+        device_id: str, #Traditionally the same thing as the thing name in AWS
         mqtt_config: MQTTConfig,
         serial_number: float = 111,
         on_connect: Optional[Callable] = None,
@@ -83,17 +83,19 @@ class IoTDevice(ABC):
     def _on_connect(self, client: mqtt.Client, userdata: Any, connect_flags: Any, reason_code: Any, properties: Any) -> None:
         """Internal callback when MQTT connects"""
         self.is_connected = True
-        print(f"[{self.device_id}] Connected to MQTT broker")
+        print(f"[{self.device_id}] Callback fired: Connected to MQTT broker")
         if self.on_connect_callback:
             self.on_connect_callback(self)
     
     def _on_disconnect(self, client: mqtt.Client, userdata: Any, disconnect_flags: Any, reason_code: Any, properties: Any) -> None:
         """Internal callback when MQTT disconnects"""
         self.is_connected = False
-        print(f"[{self.device_id}] Disconnected from MQTT broker (reason: {reason_code})")
+        print(f"[{self.device_id}] Callback fired: Disconnected from MQTT broker (reason: {reason_code})")
 
         if self.on_disconnect_callback:
             self.on_disconnect_callback(self)
+        if reason_code != 0:  # 0 means clean/intentional disconnect
+            print("This wasn't disconnected on purpose, something went wrong")
     
     def _on_message(self, client: mqtt.Client, userdata: Any, msg: mqtt.MQTTMessage) -> None:
         """Internal callback for incoming messages"""
@@ -110,13 +112,9 @@ class IoTDevice(ABC):
                 keyfile=self.mqtt_config.private_key_path,
                 tls_version=ssl.PROTOCOL_TLSv1_2
             )
-            # Use secure MQTT port if not specified
-            port = self.mqtt_config.broker_port if self.mqtt_config.broker_port != 1883 else 8883
+ 
 
-            port = self.mqtt_config.broker_port
-        
-
-        "Abstraction of connect-to-MQTT-method to include error handling"
+        #Abstraction of connect-to-MQTT-method to include error handling
         try: 
             self.client.connect(
                 self.mqtt_config.broker_address,
@@ -158,8 +156,15 @@ class IoTDevice(ABC):
         )
     
     def subscribe(self, topic: str, qos: int = 1) -> None:
-        """Subscribe to a topic"""
+        if not self.is_connected:
+            print(f"[{self.device_id}] Warning: Cannot subscribe, not connected")
+            return
         self.client.subscribe(topic, qos=qos)
+
+
+
+
+        
     
     # ========================================================================
     # Abstract Methods - Subclasses Must Implement These
@@ -172,8 +177,7 @@ class IoTDevice(ABC):
     
     @abstractmethod
     def on_message(self, topic: str, payload: str) -> None:
-        """Handle incoming messages from subscribed topics"""
-        print(f"[{self.device_id}] Received message on {topic}: {payload}")
+        """Handle incoming messages from subscribed topics"""  
         pass
 
 
@@ -216,7 +220,7 @@ class TemperatureSensor(IoTDevice):
     
     def on_message(self, topic: str, payload: str) -> None:
         """Handle incoming commands"""
-        print(f"[{self.device_id}] Received message on {topic}: {payload}")
+        print(f"[{self.device_id}] Callback fired: Received message on {topic}: {payload}")
 
 
 # ============================================================================
@@ -229,7 +233,7 @@ def main():
     # Configure MQTT broker with X.509 certificates
     mqtt_config = MQTTConfig(
         broker_address="a1ax2c7i1tgioq-ats.iot.eu-north-1.amazonaws.com", 
-        broker_port=8883,
+        broker_port=8883, #Typical secure port for MQTT with TLS
         ca_cert_path="C:/Users/louis/Documents/Code Repos/python_iot/cert/AmazonRootCA1.pem",
         client_cert_path="C:/Users/louis/Documents/Code Repos/python_iot/cert/0639a98033ec9fe3da771503029802a67fa5a5ddac16ed6670898810dd8f3087-certificate.pem.crt",
         private_key_path="C:/Users/louis/Documents/Code Repos/python_iot/cert/50104f8772ab8ac1b4173fddf543fc32b015fc38ea6dffed344c1ba857443b00-private.pem.key"
