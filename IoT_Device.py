@@ -1,7 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import Optional, Callable, Any
 from dataclasses import dataclass
-import time 
+import time
+import threading
 import paho.mqtt.client as mqtt
 from paho.mqtt.enums import CallbackAPIVersion
 import json
@@ -67,10 +68,10 @@ class IoTDevice(ABC):
         on_disconnect: Optional[Callable] = None
         
     ):
-        self.device_id = device_id
+        self.thing_name = device_id
         self.mqtt_config = mqtt_config
         self.serial_number = serial_number
-        self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=device_id)
+        self.client = mqtt.Client(CallbackAPIVersion.VERSION2, client_id=device_id)
         self.is_connected = False
         
         # Set callbacks
@@ -83,14 +84,14 @@ class IoTDevice(ABC):
     def _on_connect(self, client: mqtt.Client, userdata: Any, connect_flags: Any, reason_code: Any, properties: Any) -> None:
         """Internal callback when MQTT connects"""
         self.is_connected = True
-        print(f"[{self.device_id}] Callback fired: Connected to MQTT broker")
+        print(f"[{self.thing_name}] Callback fired: Connected to MQTT broker")
         if self.on_connect_callback:
             self.on_connect_callback(self)
     
     def _on_disconnect(self, client: mqtt.Client, userdata: Any, disconnect_flags: Any, reason_code: Any, properties: Any) -> None:
         """Internal callback when MQTT disconnects"""
         self.is_connected = False
-        print(f"[{self.device_id}] Callback fired: Disconnected from MQTT broker (reason: {reason_code})")
+        print(f"[{self.thing_name}] Callback fired: Disconnected from MQTT broker (reason: {reason_code})")
 
         if self.on_disconnect_callback:
             self.on_disconnect_callback(self)
@@ -101,10 +102,9 @@ class IoTDevice(ABC):
         """Internal callback for incoming messages"""
         self.on_message(msg.topic, msg.payload.decode())
     
-    def connect(self) -> None:
+    def connect(self, death_topic: Optional[str] = None, death_payload: Optional[str] = None) -> None:
         """Connect to MQTT broker"""
-        
-        # Set up TLS with X.509 certificates if provided
+
         if self.mqtt_config.ca_cert_path and self.mqtt_config.client_cert_path and self.mqtt_config.private_key_path:
             self.client.tls_set(
                 ca_certs=self.mqtt_config.ca_cert_path,
@@ -112,14 +112,15 @@ class IoTDevice(ABC):
                 keyfile=self.mqtt_config.private_key_path,
                 tls_version=ssl.PROTOCOL_TLSv1_2
             )
- 
 
-        #Abstraction of connect-to-MQTT-method to include error handling
-        try: 
+        if death_topic and death_payload:
+            #self.client.will_set(death_topic, death_payload, qos=1, retain=True)
+            pass
+        try:
             self.client.connect(
                 self.mqtt_config.broker_address,
                 self.mqtt_config.broker_port,
-                keepalive=60
+                keepalive=120
             )
             self.client.loop_start()
             # Wait for CONNACK before returning
@@ -128,13 +129,13 @@ class IoTDevice(ABC):
                 time.sleep(0.05)
            
             if self.is_connected:
-                print(f"[{self.device_id}] Successfully connected to MQTT broker")
+                print(f"[{self.thing_name}] Successfully connected to MQTT broker")
             else:
-                print(f"[{self.device_id}] Error: Timed out waiting for connection")
+                print(f"[{self.thing_name}] Error: Timed out waiting for connection")
 
             
         except Exception as e:
-            print(f"[{self.device_id}] Error: Failed to connect to MQTT broker at {self.mqtt_config.broker_address}:{self.mqtt_config.broker_port}")
+            print(f"[{self.thing_name}] Error: Failed to connect to MQTT broker at {self.mqtt_config.broker_address}:{self.mqtt_config.broker_port}")
             self.is_connected = False
 
                 
@@ -147,18 +148,18 @@ class IoTDevice(ABC):
     def publish(self, message: DeviceMessage, qos: int = 1) -> None:
         """Publish a message to MQTT broker"""
         if not self.is_connected:
-            print(f"[{self.device_id}] Warning: Not connected, queueing message")
+            print(f"[{self.thing_name}] Tried publish(): Warning: Not connected, queueing message")
         
         self.client.publish(
             message.topic,
             message.to_json(),
             qos=qos,
-            retain=True
+            #retain=True
         )
     
     def subscribe(self, topic: str, qos: int = 1) -> None:
         if not self.is_connected:
-            print(f"[{self.device_id}] Warning: Cannot subscribe, not connected")
+            print(f"[{self.thing_name}] Tried subscribe(): Warning: Cannot subscribe, not connected")
             return
         self.client.subscribe(topic, qos=qos)
 
@@ -184,44 +185,96 @@ class IoTDevice(ABC):
 
 # ============================================================================
 # Example Concrete Device Implementation
-# ============================================================================
+# Naming: CLOUD --- MODEM(node) --- TempSensor(device)
+# ===========================================================================
 
-class TemperatureSensor(IoTDevice):
-    """Example: A temperature sensor device"""
+class Modem(IoTDevice):
+    """Example: A modem device that connects to the cloud and forwards messages to a local device"""
     
-    def __init__(self, device_id: str, mqtt_config: MQTTConfig):
-        super().__init__(device_id, mqtt_config, serial_number=111)
-        self.temperature = 20.0
-    
-    def run(self) -> None:
-        """Simulate temperature readings and publish them"""
-        self.connect()
-        self.subscribe(f"c2d/{self.device_id}/commands")
+    def __init__(self, thing_name: str, mqtt_config: MQTTConfig):
+        super().__init__(thing_name, mqtt_config, serial_number=2540006821)
         
+
+    def run(self) -> None:
+        """Simulate modem behavior"""
+        self.connect(
+            death_topic=f"spBv1.0/NextGen/NDEATH/{self.thing_name}",
+            death_payload=json.dumps({"NDEATH": "Session closed."})
+        )
+        birth_payload = {
+            "timestamp": int(time.time() * 1000),
+            "bdSeq": 1,
+            "seq": 0,
+            "metrics": [
+                {"name": "bdSeq", "type": "uint64", "value": 1}
+            ]
+        }
+        message = DeviceMessage(
+            device_id=self.thing_name,
+            topic=f"spBv1.0/NextGen/NBIRTH/{self.thing_name}",
+            payload=birth_payload
+        )
+        self.publish(message)
+        print(f"[{self.thing_name}] Published: NBIRTH message")
+                
+        self.subscribe(f"spBv1.0/NextGen/NCMD/{self.thing_name}")
+        self.addSensor("FakeTempSensor")
+
         try:
             for i in range(10):
-                # Simulate temperature change
-                self.temperature += (i % 2) * 0.5 - 0.25  # Random-ish variation
-                
-                # Create and publish message
+                # Modem could also publish status updates or forward messages here
                 message = DeviceMessage(
-                    device_id=self.device_id,
-                    topic=f"d2c/{self.device_id}/temperature",
-                    payload={"temp_celsius": round(self.temperature, 2), "unit": "C"}
+                    device_id=self.thing_name,
+                    topic=f"spBv1.0/NextGen/NDATA/{self.thing_name}",
+                    payload={"Heartbeat": f"Modem still alive.{time.time()}"}
                 )
-                
                 self.publish(message)
-                print(f"[{self.device_id}] Published: {self.temperature:.2f}°C")
-                
-                # Wait before next reading
-                time.sleep(10)
+                print(f"[{self.thing_name}] Published: Modem heartbeat")
+                time.sleep(60)
         
         finally:
             self.disconnect()
     
+    def addSensor(self, sensor_name: str) -> None:
+        birth_payload = {
+            "timestamp": int(time.time() * 1000),
+            "seq": 1,
+            "metrics": [
+                {"name": "temperature", "type": "float", "value": 20.0},
+                {"name": "unit", "type": "string", "value": "C"}
+            ]
+        }
+        self.publish(DeviceMessage(
+            device_id=self.thing_name,
+            topic=f"spBv1.0/NextGen/DBIRTH/{self.thing_name}/{sensor_name}",
+            payload=birth_payload
+        ))
+        self.subscribe(f"spBv1.0/NextGen/DCMD/{self.thing_name}/{sensor_name}")
+        print(f"[{sensor_name}] Published: DBIRTH message")
+        threading.Thread(target=self._run_sensor, args=(sensor_name,), daemon=True).start()
+
+    def _run_sensor(self, sensor_name: str) -> None:
+        temperature = 20.0
+        for i in range(10):
+            temperature += (i % 2) * 0.5 - 0.25
+            self.publish(DeviceMessage(
+                device_id=self.thing_name,
+                topic=f"spBv1.0/NextGen/DDATA/{self.thing_name}/{sensor_name}",
+                payload={"temp_celsius": round(temperature, 2), "unit": "C"}
+            ))
+            print(f"[{sensor_name}] Published: {temperature:.2f}°C")
+            time.sleep(10)
+
+        self.publish(DeviceMessage(
+            device_id=self.thing_name,
+            topic=f"spBv1.0/NextGen/DDEATH/{self.thing_name}/{sensor_name}",
+            payload={"DDEATH": "Device offline."}
+        ))
+        print(f"[{sensor_name}] DDEATH published")
+
     def on_message(self, topic: str, payload: str) -> None:
-        """Handle incoming commands"""
-        print(f"[{self.device_id}] Callback fired: Received message on {topic}: {payload}")
+        """Handle incoming commands for the modem"""
+        print(f"[{self.thing_name}] Callback fired: Received message on {topic}: {payload}")
 
 
 # ============================================================================
@@ -240,9 +293,8 @@ def main():
         private_key_path="C:/Users/louis/Documents/Code Repos/python_iot/cert/50104f8772ab8ac1b4173fddf543fc32b015fc38ea6dffed344c1ba857443b00-private.pem.key"
     )
     
-    # Create and run a single temperature sensor
-    sensor = TemperatureSensor("FakeTempSensor", mqtt_config) #This device ID needs to be the same thing as the thing name in the cloud
-    sensor.run()
+    gateway = Modem("FakeModem", mqtt_config)
+    gateway.run()
 
 
 

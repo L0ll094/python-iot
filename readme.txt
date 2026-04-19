@@ -31,14 +31,10 @@ On AWS IoT Side
     Here we define that the specific action of IoT Connect is permitted for all clients
     A client is an IoT Device so if we only want my temp sensor "MySensor" to connect we can define that here."
 
-Topics are split by direction:
-- Device to cloud (d2c): d2c/{device_id}/temperature  — sensor publishes readings here
-- Cloud to device (c2d): c2d/{device_id}/commands     — device subscribes here for incoming instructions
-
+Topics structure are governed by Sparkplug - B
 Update your policy resources to cover both prefixes: topic/d2c/* and topicfilter/c2d/* in addition to the connect block.
 
     Copy of ridiculously permissive policy 
-    (allow everything on all topics so AWS test client can see stuff)
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -49,18 +45,12 @@ Update your policy resources to cover both prefixes: topic/d2c/* and topicfilter
         "iot:Receive",
         "iot:PublishRetain"
       ],
-      "Resource": [
-      "arn:aws:iot:eu-north-1:169024356372:topic/d2c/*",
-      "arn:aws:iot:eu-north-1:169024356372:topic/c2d/*"
-      ]
+      "Resource": "arn:aws:iot:eu-north-1:169024356372:topic/spBv1.0/NextGen/*"
     },
     {
       "Effect": "Allow",
       "Action": "iot:Subscribe",
-      "Resource": [
-      "arn:aws:iot:eu-north-1:169024356372:topicfilter/d2c/*",
-      "arn:aws:iot:eu-north-1:169024356372:topicfilter/c2d/*"
-      ]
+      "Resource": "arn:aws:iot:eu-north-1:169024356372:topicfilter/spBv1.0/NextGen/*"
     },
     {
       "Effect": "Allow",
