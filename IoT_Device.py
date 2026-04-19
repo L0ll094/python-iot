@@ -152,7 +152,8 @@ class IoTDevice(ABC):
         self.client.publish(
             message.topic,
             message.to_json(),
-            qos=qos
+            qos=qos,
+            retain=True
         )
     
     def subscribe(self, topic: str, qos: int = 1) -> None:
@@ -195,7 +196,7 @@ class TemperatureSensor(IoTDevice):
     def run(self) -> None:
         """Simulate temperature readings and publish them"""
         self.connect()
-        self.subscribe(f"devices/{self.serial_number}/temperature")  # Subscribe to command topic
+        self.subscribe(f"c2d/{self.device_id}/commands")
         
         try:
             for i in range(10):
@@ -205,7 +206,7 @@ class TemperatureSensor(IoTDevice):
                 # Create and publish message
                 message = DeviceMessage(
                     device_id=self.device_id,
-                    topic=f"devices/{self.serial_number}/temperature",
+                    topic=f"d2c/{self.device_id}/temperature",
                     payload={"temp_celsius": round(self.temperature, 2), "unit": "C"}
                 )
                 
